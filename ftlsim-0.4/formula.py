@@ -22,7 +22,7 @@ def wl_worstcase_d(sf, Th):
     print(res)
     return res
 
-def wl_worstcase_d(sf, Th, Np):
+def wl_worstcase_r(sf, Th, Np):
     res = Np * (1-sf) / Th
     print(res)
     return res
