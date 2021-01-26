@@ -174,6 +174,7 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
     }
     for (i = 0; i < count; i++) {
         int lba = addrs->getaddr(addrs);
+//        printf("lba = %d\n",lba);
         if (lba == -1)
             return;
         assert(lba >= 0 && lba < ftl->T * ftl->Np);
@@ -208,10 +209,13 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                     next->write(ftl, next, b->lba[j]);
                     check_new_segment(ftl, next);
                 }
-            if (ftl->wl_activated == 1) {
-                b->erase_counts++;  // update erase counts
-                b->effective_ec++;  // update effective erase counts
-            }
+//            if (ftl->wl_activated == 1) {
+//                b->erase_counts++;  // update erase counts
+//                b->effective_ec++;  // update effective erase counts
+//            }
+            b->erase_counts++;  // update erase counts
+//            b->effective_ec++;  // update effective erase counts
+            
             do_put_blk(ftl, b);
         }
 
@@ -221,14 +225,14 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                 pool = ftl->get_pool_to_clean(ftl);
                 int max = INT_MIN;
                 int min = INT_MAX;
-                int hot_min = INT_MAX;
-                int cold_eec_max = INT_MIN;
-                int hot_eec_min = INT_MAX;
+//                int hot_min = INT_MAX;
+//                int cold_eec_max = INT_MIN;
+//                int hot_eec_min = INT_MAX;
                 struct segment *hottest = NULL;
                 struct segment *coldest = NULL;
-                struct segment *hmin = NULL;
-                struct segment *cold_eec = NULL;
-                struct segment *hot_eec = NULL;
+//                struct segment *hmin = NULL;
+//                struct segment *cold_eec = NULL;
+//                struct segment *hot_eec = NULL;
                 for (j = 0; j <= pool->Np; j++) { // find the hottest block and coldest block
                     if (!list_empty(&pool->bins[j])) {
                         struct segment *b = (&pool->bins[j])->next;
@@ -237,31 +241,32 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                                 min = b->erase_counts;
                                 coldest = b;
                             }
-                            if (b->type == 0 && b->effective_ec > cold_eec_max ) { // cold pool resize
-                                cold_eec_max = b->effective_ec;
-                                cold_eec = b;
-                            }
+//                            if (b->type == 0 && b->effective_ec > cold_eec_max ) { // cold pool resize
+//                                cold_eec_max = b->effective_ec;
+//                                cold_eec = b;
+//                            }
                             if (b->type == 1 && b->erase_counts > max ) { // hot block
                                 max = b->erase_counts;
                                 hottest = b;
                             }
-                            if (b->type == 1 && b->erase_counts < hot_min ) { // hot pool resize
-                                hot_min = b->erase_counts;
-                                hmin = b;
-                            }
-                            if (b->type == 1 && b->effective_ec < hot_eec_min ) { // cold pool resize
-                                hot_eec_min = b->effective_ec;
-                                hot_eec = b;
-                            }
+//                            if (b->type == 1 && b->erase_counts < hot_min ) { // hot pool resize
+//                                hot_min = b->erase_counts;
+//                                hmin = b;
+//                            }
+//                            if (b->type == 1 && b->effective_ec < hot_eec_min ) { // cold pool resize
+//                                hot_eec_min = b->effective_ec;
+//                                hot_eec = b;
+//                            }
                         }
                     }
                 }
-                if (hottest == NULL || coldest == NULL || hmin == NULL || cold_eec == NULL || hot_eec == NULL) {
-                    continue;
-                }
-//                printf("max = %d, min = %d\n", max, min);
-                if ((max - min) > ftl->wl_threshold) { // WL trigger test
+                
+//                if (hottest == NULL || coldest == NULL || hmin == NULL || cold_eec == NULL || hot_eec == NULL) {
+//                    printf("max = %d, min = %d, hmin= %d, cold_eec=%d, hot_eec=%d\n", max, min, hot_min, cold_eec_max, hot_eec_min);
+//                }
+                if (hottest != NULL && coldest != NULL && (max - min) > ftl->wl_threshold) { // WL trigger test
                     ftl->wl_counts++;
+//                    printf("max = %d, min = %d\n", max, min);
                     
                     // move data in the hottest block to a free unit
                     list_rm(hottest);
@@ -271,7 +276,7 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                     assert(pool->pages_valid >= 0 && pool->pages_invalid >= 0);
                     pool->length--;
                     assert(pool->length >= 0);
-                    
+
                     struct segment *free = do_get_blk(ftl); // choose one free block
                     free->pool = pool;
                     for (j = 0; j < hottest->Np; j++) {
@@ -284,7 +289,7 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                         }
                     }
                     pool->insertseg(pool, free);
-                    
+
 
                     // erase the hottest block
                     hottest->erase_counts++;
@@ -312,26 +317,35 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                     // erase the coldest block and put it to freelist
                     coldest->erase_counts++;
                     do_put_blk(ftl, coldest);
+                    
+//                    ftl->wl_writes += coldest->n_valid;
+//                    ftl->wl_writes += hottest->n_valid;
+//                    hottest->erase_counts = min + 1;
+//                    coldest->erase_counts = max + 1;
 
                     // hot-cold regulation
                     hottest->type = 0;
                     coldest->type = 1;
 
                     // reset effective erase count
-                    hottest->effective_ec = 0;
-                    coldest->effective_ec = 0;
+//                    hottest->effective_ec = 0;
+//                    coldest->effective_ec = 0;
 
                 }
                 
                 // cold pool resize
-               if (cold_eec_max - hot_eec_min > ftl->wl_threshold) {
-                   cold_eec->type = 1;
-               }
-
-               // hot pool resize
-               if (max - hot_min > 2 * ftl->wl_threshold) {
-                   hmin->type = 0;
-               }
+//               if (cold_eec != NULL && cold_eec_max - hot_eec_min > ftl->wl_threshold) {
+////                   printf("cold_eec_max = %d, hot_eec_min = %d\n", cold_eec_max, hot_eec_min);
+//                   cold_eec->type = 1;
+//                   ftl->wl_cpr++;
+//               }
+//
+//               // hot pool resize
+//               if (hmin != NULL && max - hot_min > 2 * ftl->wl_threshold) {
+////                   printf("hot_max = %d, hot_min = %d\n", max, hot_min);
+//                   hmin->type = 0;
+//                   ftl->wl_hpr++;
+//               }
             } else { // LRU
 //                ftl->int_writes += ftl->Np;
             }

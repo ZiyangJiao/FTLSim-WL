@@ -73,6 +73,9 @@ struct ftl {
     int wl_threshold;
     int wl_activated;
     int wl_writes;
+    int wl_cpr;
+    int wl_hpr;
+
 };
 
 %extend ftl {
