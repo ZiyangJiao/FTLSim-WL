@@ -15,7 +15,7 @@ import sys
 # 256k * 64 * 4K = 64GB
 
 U = 256 * 1024
-Np = 64
+Np = 256
 minfree = 4
 
 
@@ -33,8 +33,8 @@ def getLba(r, f, U, Np):
 warmup = getaddr.uniform(U * Np)
 
 steps = [i * 0.05 for i in range(1, 20)]
-steps_r = [0.8, 0.9]
-steps_f = [0.2, 0.1]
+steps_r = [0.9]
+steps_f = [0.1]
 
 for wl_threshold in [50, 100, 200]:
     for S_f in [0.1, 0.07]:
@@ -97,9 +97,12 @@ for wl_threshold in [50, 100, 200]:
                 print "wl_threshold %d" % wl_threshold
                 print "S_f %.3f" % S_f
                 print "r/f %.2f %.2f" % (r, f)
+                print "Np %d" % Np
+                print "U %d" % U
+                
                 ftl.wl_activated = 1
                 ftl.rr_threshold = 10000
-                for i in range(100000):
+                for i in range(100):
                     ftl.int_writes = 0
                     ftl.ext_writes = 0
                     ftl.wl_counts = 0

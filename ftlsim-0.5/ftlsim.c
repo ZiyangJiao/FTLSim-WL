@@ -215,8 +215,10 @@ static void check_new_segment(struct ftl *ftl, struct pool *pool)
             }
         }
         else {
-            if (ftl->hottest != NULL && blk->erase_counts >= ftl->hottest->erase_counts + ftl->wl_threshold){
+            if (ftl->hottest != NULL && blk->erase_counts >= ftl->hottest->erase_counts + 10){
                 blk->type = 1;
+                ftl->second_hottest = ftl->hottest;
+                ftl->hottest = blk;
             }
 //            if (ftl->coldest == NULL) {
 //                ftl->coldest = blk;
