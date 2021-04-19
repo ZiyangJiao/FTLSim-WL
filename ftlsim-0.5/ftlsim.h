@@ -18,7 +18,6 @@
  * You should have received a copy of the GNU General Public License
  * along with ftlsim. If not, see http://www.gnu.org/licenses/. 
  */
-
 #include <Python.h>
 
 struct int_array {          /* kludge for indexed arrays */
@@ -37,6 +36,12 @@ struct segment {
     int erase_counts;
     int effective_ec;
     int read_counts;
+    //heap index
+    int ecmin_index;
+    int ecmax_index;
+    int eecmin_index;
+    int eecmax_index;
+    unsigned long long int last_erase_counts;
 
 };
 
@@ -46,6 +51,14 @@ void do_segment_write(struct segment *self, int page, int lba);
 void do_segment_overwrite(struct segment *self, int page, int lba);
 
 struct ftl;                    /* forward declaration */
+struct ECMinHeap;
+struct ECMaxHeap;
+struct EECMinHeap;
+struct EECMaxHeap;
+typedef struct ECMinHeap ECMinHeap;
+typedef struct ECMaxHeap ECMaxHeap;
+typedef struct EECMinHeap EECMinHeap;
+typedef struct EECMaxHeap EECMaxHeap;
 typedef struct pool *(*write_selector_t)(struct ftl*, int lba);
 extern write_selector_t write_select_first;
 extern write_selector_t write_select_top_down;
@@ -75,19 +88,30 @@ struct ftl {
     PyObject *get_pool_to_clean_arg;
     int write_seq;
     //for Wl
+    unsigned long long int erase_counts;
     int wl_counts;
     int wl_threshold;
     int wl_activated;
     int wl_writes;
-    struct segment *hottest;
-    struct segment *second_hottest;
-    struct segment *coldest;
-    struct segment *second_coldest;
+//    struct segment *hottest;
+//    struct segment *second_hottest;
+//    struct segment *coldest;
+//    struct segment *second_coldest;
     //for RR
     int rr_counts;
     int rr_threshold;
     int rr_writes;
     int ext_reads;
+    //dual pool heap
+    ECMinHeap* hot_ec_min;
+    ECMaxHeap* hot_ec_max;
+    EECMinHeap* hot_eec_min;
+    ECMinHeap* cold_ec_min;
+    EECMaxHeap* cold_eec_max;
+    int hpr;
+    int cpr;
+    //old block protection heap
+    ECMinHeap* ec_min;
 
 };
 
@@ -99,6 +123,7 @@ struct segment *do_get_blk(struct ftl *self);
 void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count);
 void do_ftl_read(struct ftl *ftl, int addrs);
 void do_ftl_write(struct ftl *ftl, int addrs);
+void do_ftl_build_heap(struct ftl *ftl);
 
 struct getaddr {
     int (*getaddr)(void *self);
@@ -133,3 +158,89 @@ struct pool *lru_pool_new(struct ftl *, int Np);
 struct pool *greedy_pool_new(struct ftl *, int Np);
 
 extern int err_occurred;
+
+/***general methods***/
+int parent(int i);
+int left_child(int i);
+int right_child(int i);
+/***general methods***/
+
+/***EC min heap***/
+typedef struct ECMinHeap ECMinHeap;
+struct ECMinHeap {
+    struct segment **arr;
+    // Current Size of the Heap
+    int size;
+    // Maximum capacity of the heap
+    int capacity;
+};
+struct segment *get_ecmin(ECMinHeap* heap);
+ECMinHeap* init_ecminheap(int capacity);
+ECMinHeap* insert_ecminheap(ECMinHeap* heap, struct segment* element);
+ECMinHeap* ecminheapify(ECMinHeap* heap, int index);
+ECMinHeap* delete_ecminimum(ECMinHeap* heap);
+ECMinHeap* ecmin_delete_element(ECMinHeap* heap, int index);
+ECMinHeap* ecmin_addone_check(ECMinHeap* heap, int index);
+void print_ecminheap(ECMinHeap* heap);
+void free_ecminheap(ECMinHeap* heap);
+/***EC min heap***/
+
+/***EC max heap***/
+typedef struct ECMaxHeap ECMaxHeap;
+struct ECMaxHeap {
+    struct segment **arr;
+    // Current Size of the Heap
+    int size;
+    // Maximum capacity of the heap
+    int capacity;
+};
+struct segment *get_ecmax(ECMaxHeap* heap);
+ECMaxHeap* init_ecmaxheap(int capacity);
+ECMaxHeap* insert_ecmaxheap(ECMaxHeap* heap, struct segment* element);
+ECMaxHeap* ecmaxheapify(ECMaxHeap* heap, int index);
+ECMaxHeap* delete_ecmaximum(ECMaxHeap* heap);
+ECMaxHeap* ecmax_delete_element(ECMaxHeap* heap, int index);
+ECMaxHeap* ecmax_addone_check(ECMaxHeap* heap, int index);
+void print_ecmaxheap(ECMaxHeap* heap);
+void free_ecmaxheap(ECMaxHeap* heap);
+/***EC max heap***/
+
+/***EEC min heap***/
+typedef struct EECMinHeap EECMinHeap;
+struct EECMinHeap {
+    struct segment **arr;
+    // Current Size of the Heap
+    int size;
+    // Maximum capacity of the heap
+    int capacity;
+};
+struct segment *get_eecmin(EECMinHeap* heap);
+EECMinHeap* init_eecminheap(int capacity);
+EECMinHeap* insert_eecminheap(EECMinHeap* heap, struct segment* element);
+EECMinHeap* eecminheapify(EECMinHeap* heap, int index);
+EECMinHeap* delete_eecminimum(EECMinHeap* heap);
+EECMinHeap* eecmin_delete_element(EECMinHeap* heap, int index);
+EECMinHeap* eecmin_addone_check(EECMinHeap* heap, int index);
+void print_eecminheap(EECMinHeap* heap);
+void free_eecminheap(EECMinHeap* heap);
+/***EEC min heap***/
+
+/***EEC max heap***/
+typedef struct EECMaxHeap EECMaxHeap;
+struct EECMaxHeap {
+    struct segment **arr;
+    // Current Size of the Heap
+    int size;
+    // Maximum capacity of the heap
+    int capacity;
+};
+struct segment *get_eecmax(EECMaxHeap* heap);
+EECMaxHeap* init_eecmaxheap(int capacity);
+EECMaxHeap* insert_eecmaxheap(EECMaxHeap* heap, struct segment* element);
+EECMaxHeap* eecmaxheapify(EECMaxHeap* heap, int index);
+EECMaxHeap* delete_eecmaximum(EECMaxHeap* heap);
+EECMaxHeap* eecmax_delete_element(EECMaxHeap* heap, int index);
+EECMaxHeap* eecmax_addone_check(EECMaxHeap* heap, int index);
+void print_eecmaxheap(EECMaxHeap* heap);
+void free_eecmaxheap(EECMaxHeap* heap);
+/***EEC max heap***/

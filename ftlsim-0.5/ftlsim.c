@@ -79,8 +79,8 @@ struct segment *segment_new(int Np)
     for (i = 0; i < Np; i++)
         fb->lba[i] = -1;
 
-    fb->type = 0;
     fb->erase_counts = 0;
+    fb->effective_ec = 0;
 
     return fb;
 }
@@ -126,7 +126,135 @@ struct ftl *ftl_new(int T, int Np)
     ftl->Np = Np;
     ftl->map = calloc(sizeof(*ftl->map)*T*Np, 1);
 
+    //heap
+    ftl->cold_ec_min  = init_ecminheap(T+Np);
+    ftl->hot_ec_min   = init_ecminheap(T+Np);
+    ftl->hot_ec_max   = init_ecmaxheap(T+Np);
+    ftl->hot_eec_min  = init_eecminheap(T+Np);
+    ftl->cold_eec_max = init_eecmaxheap(T+Np);
     return ftl;
+}
+
+void do_ftl_build_heap(struct ftl *ftl){
+    struct pool *pool = ftl->get_pool_to_clean(ftl);
+    if (pool->frontier->type == 1) {
+        insert_ecmaxheap(ftl->hot_ec_max, pool->frontier);
+        insert_ecminheap(ftl->hot_ec_min, pool->frontier);
+        insert_eecminheap(ftl->hot_eec_min, pool->frontier);
+            ///***Debug: Start***///
+            if (ftl->hot_ec_max->arr[pool->frontier->ecmax_index] != pool->frontier) {
+                    printf("BD1 here: %d\n");
+                    exit(-1);
+            }
+            if (ftl->hot_ec_min->arr[pool->frontier->ecmin_index] != pool->frontier) {
+                    printf("BD2 here: %d\n");
+                    exit(-1);
+            }
+            if (ftl->hot_eec_min->arr[pool->frontier->eecmin_index] != pool->frontier) {
+                    printf("BD3 here: %d\n");
+                    exit(-1);
+            }
+            ///***Debug: End***///
+    } else {
+        insert_ecminheap(ftl->cold_ec_min, pool->frontier);
+        insert_eecmaxheap(ftl->cold_eec_max, pool->frontier);
+            ///***Debug: Start***///
+            if (ftl->cold_ec_min->arr[pool->frontier->ecmin_index] != pool->frontier) {
+                    printf("BD4 here: %d\n");
+                    exit(-1);
+            }
+            if (ftl->cold_eec_max->arr[pool->frontier->eecmax_index] != pool->frontier) {
+                    printf("BD5 here: %d\n");
+                    exit(-1);
+            }
+            ///***Debug: End***///
+    }
+
+    struct segment *tmp = ftl->free_list;
+    int free = ftl->nfree;
+    while (free > 0) {
+        if (tmp->type == 1) {
+            insert_ecmaxheap(ftl->hot_ec_max, tmp);
+            insert_ecminheap(ftl->hot_ec_min, tmp);
+            insert_eecminheap(ftl->hot_eec_min, tmp);
+                ///***Debug: Start***///
+                if (ftl->hot_ec_max->arr[tmp->ecmax_index] != tmp) {
+                        printf("BD6 here: %d\n");
+                        exit(-1);
+                }
+                if (ftl->hot_ec_min->arr[tmp->ecmin_index] != tmp) {
+                        printf("BD7 here: %d\n");
+                        exit(-1);
+                }
+                if (ftl->hot_eec_min->arr[tmp->eecmin_index] != tmp) {
+                        printf("BD8 here: %d\n");
+                        exit(-1);
+                }
+                ///***Debug: End***///
+        } else {
+            insert_ecminheap(ftl->cold_ec_min, tmp);
+            insert_eecmaxheap(ftl->cold_eec_max, tmp);
+                ///***Debug: Start***///
+                if (ftl->cold_ec_min->arr[tmp->ecmin_index] != tmp) {
+                        printf("BD9 here: %d\n");
+                        exit(-1);
+                }
+                if (ftl->cold_eec_max->arr[tmp->eecmax_index] != tmp) {
+                        printf("BD10 here: %d\n");
+                        exit(-1);
+                }
+                ///***Debug: End***///
+        }
+        tmp = tmp->next;
+        free--;
+    }
+    int j = 0;
+    for (j = 0; j <= pool->Np; j++) {
+        tmp = (&pool->bins[j])->next;
+        for (; tmp != (&pool->bins[j]); tmp = tmp->next) {
+            if (tmp->type == 1 ) { // hot block
+                insert_ecmaxheap(ftl->hot_ec_max, tmp);
+                insert_ecminheap(ftl->hot_ec_min, tmp);
+                insert_eecminheap(ftl->hot_eec_min, tmp);
+                    ///***Debug: Start***///
+                    if (ftl->hot_ec_max->arr[tmp->ecmax_index] != tmp) {
+                            printf("BD11 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->hot_ec_min->arr[tmp->ecmin_index] != tmp) {
+                            printf("BD12 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->hot_eec_min->arr[tmp->eecmin_index] != tmp) {
+                            printf("BD13 here: %d\n");
+                            exit(-1);
+                    }
+                    ///***Debug: End***///
+            } else { // cold block
+                insert_ecminheap(ftl->cold_ec_min, tmp);
+                insert_eecmaxheap(ftl->cold_eec_max, tmp);
+                    ///***Debug: Start***///
+                    if (ftl->cold_ec_min->arr[tmp->ecmin_index] != tmp) {
+                            printf("BD14 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->cold_eec_max->arr[tmp->eecmax_index] != tmp) {
+                            printf("BD15 here: %d\n");
+                            exit(-1);
+                    }
+                    ///***Debug: End***///
+            }
+        }
+
+    }
+
+    printf("heap build complete! Size,Capacity:\n");
+    printf("hot_ec_max: %d,%d\n", ftl->hot_ec_max->size,ftl->hot_ec_max->capacity);
+    printf("hot_ec_min: %d,%d\n", ftl->hot_ec_min->size,ftl->hot_ec_min->capacity);
+    printf("hot_eec_min: %d,%d\n", ftl->hot_eec_min->size,ftl->hot_eec_min->capacity);
+    printf("cold_ec_min: %d,%d\n", ftl->cold_ec_min->size,ftl->cold_ec_min->capacity);
+    printf("cold_eec_max: %d,%d\n", ftl->cold_eec_max->size,ftl->cold_eec_max->capacity);
+
 }
 
 void ftl_del(struct ftl *ftl)
@@ -136,6 +264,12 @@ void ftl_del(struct ftl *ftl)
     while ((b = do_get_blk(ftl)) != NULL)
         segment_del(b);
     free(ftl->map);
+    //heap
+    free_ecminheap(ftl->cold_ec_min);
+    free_ecminheap(ftl->hot_ec_min);
+    free_ecmaxheap(ftl->hot_ec_max);
+    free_eecminheap(ftl->hot_eec_min);
+    free_eecmaxheap(ftl->cold_eec_max);
     free(ftl);
 }
 
@@ -146,24 +280,23 @@ void do_put_blk(struct ftl *self, struct segment *blk)
     self->nfree++;
     blk->read_counts = 0;
     // for maintaining the hottest and coldest block
-    if (blk == self->hottest) {
-        self->hottest = self->second_hottest;
-        self->second_hottest = NULL;
-    } else if (blk == self->second_hottest) {
-        self->second_hottest = NULL;
-    }
-//    else if (blk == self->coldest) {
-//        self->coldest = self->second_coldest;
-//        self->second_coldest = NULL;
-//    } else if (blk == self->second_coldest) {
-//        self->second_coldest = NULL;
+//    if (blk == self->hottest) {
+//        self->hottest = self->second_hottest;
+//        self->second_hottest = NULL;
+//    } else if (blk == self->second_hottest) {
+//        self->second_hottest = NULL;
 //    }
-
-
 }
 
 struct segment *do_get_blk(struct ftl *self)
 {
+//    struct segment *val = self->free_list;
+//    if (val != NULL) {
+//        self->free_list = val->next;
+//        self->nfree--;
+//    }
+//    return val;
+
     if (self->free_list == NULL) {
         return NULL;
     }
@@ -174,7 +307,6 @@ struct segment *do_get_blk(struct ftl *self)
             start = start->next;
             tail = tail->next;
         }
-//        self->free_list = val->next;
         self->nfree--;
         start->next = NULL;
         return tail;
@@ -189,55 +321,31 @@ static void check_new_segment(struct ftl *ftl, struct pool *pool)
     assert(pool->i <= pool->Np);
     if (pool->i >= pool->Np) {
         struct segment *b = do_get_blk(ftl);
-        struct segment *blk = pool->frontier;
+//        struct segment *blk = pool->frontier;
         pool->addseg(pool, b);
         // for maintaining the hottest and coldest block
-        if (ftl->wl_activated == 0){
-            return;
-        }
-        if (blk->type == 1){
-            if (ftl->hottest == NULL) {
-                ftl->hottest = blk;
-            } else if (ftl->second_hottest != NULL) {
-                if (ftl->hottest->erase_counts < blk->erase_counts) {
-                    ftl->second_hottest = ftl->hottest;
-                    ftl->hottest = blk;
-                } else if (ftl->second_hottest->erase_counts < blk->erase_counts) {
-                    ftl->second_hottest = blk;
-                }
-            } else {
-                if (ftl->hottest->erase_counts < blk->erase_counts) {
-                    ftl->second_hottest = ftl->hottest;
-                    ftl->hottest = blk;
-                } else {
-                    ftl->second_hottest = blk;
-                }
-            }
-        }
-        else {
-            if (ftl->hottest != NULL && blk->erase_counts >= ftl->hottest->erase_counts + 10){
-                blk->type = 1;
-                ftl->second_hottest = ftl->hottest;
-                ftl->hottest = blk;
-            }
-//            if (ftl->coldest == NULL) {
-//                ftl->coldest = blk;
-//            } else if (ftl->second_coldest != NULL) {
-//                if (ftl->coldest->erase_counts > blk->erase_counts) {
-//                    ftl->second_coldest = ftl->coldest;
-//                    ftl->coldest = blk;
-//                } else if (ftl->second_coldest->erase_counts > blk->erase_counts) {
-//                    ftl->second_coldest = blk;
+//        if (ftl->wl_activated == 0){
+//            return;
+//        }
+//        if (blk->type == 1){
+//            if (ftl->hottest == NULL) {
+//                ftl->hottest = blk;
+//            } else if (ftl->second_hottest != NULL) {
+//                if (ftl->hottest->erase_counts < blk->erase_counts) {
+//                    ftl->second_hottest = ftl->hottest;
+//                    ftl->hottest = blk;
+//                } else if (ftl->second_hottest->erase_counts < blk->erase_counts) {
+//                    ftl->second_hottest = blk;
 //                }
 //            } else {
-//                if (ftl->coldest->erase_counts > blk->erase_counts) {
-//                    ftl->second_coldest = ftl->coldest;
-//                    ftl->coldest = blk;
+//                if (ftl->hottest->erase_counts < blk->erase_counts) {
+//                    ftl->second_hottest = ftl->hottest;
+//                    ftl->hottest = blk;
 //                } else {
-//                    ftl->second_coldest = blk;
+//                    ftl->second_hottest = blk;
 //                }
 //            }
-        }
+//        }
     }
 }
 
@@ -511,70 +619,68 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                 }
             if (ftl->wl_activated == 1) {
                 b->erase_counts++;  // update erase counts
-//                b->effective_ec++;  // update effective erase counts
+                b->effective_ec++;  // update effective erase counts
             }
             do_put_blk(ftl, b);
+            // heap update
+            if (ftl->wl_activated == 1) {
+                if (b->type == 1) {
+                    ecmax_addone_check(ftl->hot_ec_max, b->ecmax_index);
+                    ecmin_addone_check(ftl->hot_ec_min, b->ecmin_index);
+                    eecmin_addone_check(ftl->hot_eec_min, b->eecmin_index);
+                    ///***Debug: Start***///
+                    if (ftl->hot_ec_max->arr[b->ecmax_index] != b) {
+                            printf("GC1 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->hot_ec_min->arr[b->ecmin_index] != b) {
+                            printf("GC2 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->hot_eec_min->arr[b->eecmin_index] != b) {
+                            printf("GC3 here: %d\n");
+                            exit(-1);
+                    }
+                    ///***Debug: End***///
+                } else {
+                    ecmin_addone_check(ftl->cold_ec_min, b->ecmin_index);
+                    eecmax_addone_check(ftl->cold_eec_max, b->eecmax_index);
+                    ///***Debug: Start***///
+                    if (ftl->cold_ec_min->arr[b->ecmin_index] != b) {
+                            printf("GC4 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->cold_eec_max->arr[b->eecmax_index] != b) {
+                            printf("GC5 here: %d\n");
+                            exit(-1);
+                    }
+                    ///***Debug: End***///
+                }
+            }
         }
 
         /***WL***/
-        if (ftl->wl_threshold != 0 && gc == 1 && ftl->hottest != NULL && ftl->coldest != NULL) {
+//        if (ftl->wl_threshold != 0 && gc == 1) {
+        if (ftl->wl_threshold != 0) {
             if (ftl->wl_activated == 1 ) { // Greedy
-                pool = ftl->get_pool_to_clean(ftl);
-//                int max = INT_MIN;
-//                int min = INT_MAX;
-//                int hot_min = INT_MAX;
-//                int cold_eec_max = INT_MIN;
-//                int hot_eec_min = INT_MAX;
-//                struct segment *hottest = NULL;
-//                struct segment *coldest = NULL;
-//                struct segment *hmin = NULL;
-//                struct segment *cold_eec = NULL;
-//                struct segment *hot_eec = NULL;
-//                for (j = 0; j <= pool->Np; j++) { // find the hottest block and coldest block
-//                    if (!list_empty(&pool->bins[j])) {
-//                        struct segment *b = (&pool->bins[j])->next;
-//                        for (; b != (&pool->bins[j]); b = b->next) {
-//                            if (b->type == 0 && b->erase_counts < min ) { // cold block
-//                                min = b->erase_counts;
-//                                coldest = b;
-//                            }
-//                            if (b->type == 0 && b->effective_ec > cold_eec_max ) { // cold pool resize
-//                                cold_eec_max = b->effective_ec;
-//                                cold_eec = b;
-//                            }
-//                            if (b->type == 1 && b->erase_counts > max ) { // hot block
-//                                max = b->erase_counts;
-//                                hottest = b;
-//                            }
-//                            if (b->type == 1 && b->erase_counts < hot_min ) { // hot pool resize
-//                                hot_min = b->erase_counts;
-//                                hmin = b;
-//                            }
-//                            if (b->type == 1 && b->effective_ec < hot_eec_min ) { // cold pool resize
-//                                hot_eec_min = b->effective_ec;
-//                                hot_eec = b;
-//                            }
-//                        }
-//                    }
-//                }
-//                if (hottest == NULL || coldest == NULL || hmin == NULL || cold_eec == NULL || hot_eec == NULL) {
-//                    continue;
-//                }
-                int max = ftl->hottest->erase_counts;
-                int min = ftl->coldest->erase_counts;
-                struct segment *hottest = ftl->hottest;
-                struct segment *coldest = ftl->coldest;
-                if ((max - min) > ftl->wl_threshold) { // WL trigger test
-                    ftl->wl_counts++;
-                    ftl->hottest = ftl->second_hottest;
-                    ftl->second_hottest = NULL;
-                    ftl->coldest = ftl->second_coldest;
-                    ftl->second_coldest = NULL;
+//                struct segment *hottest = ftl->hot_ec_max->size > 0 ? ftl->hot_ec_max->arr[0] : NULL;
+//                struct segment *coldest = ftl->cold_ec_min->size >0 ? ftl->cold_ec_min->arr[0] : NULL;
+                struct segment *hottest = get_ecmax(ftl->hot_ec_max);
+                struct segment *coldest = get_ecmin(ftl->cold_ec_min);
+                if (hottest == NULL || coldest == NULL) {
+//                    printf("DS Attention: Some pools are empty!\n");
+                }
 
+                // dirty swap
+                else if ((hottest->erase_counts - coldest->erase_counts) > ftl->wl_threshold) { // WL trigger test
+                    ftl->wl_counts++;
                     // hot-cold regulation
                     hottest->type = 0;
                     coldest->type = 1;
-                    ftl->hottest->read_counts = 0;
+                    hottest->read_counts = 0;
+                    // reset effective erase count
+                    hottest->effective_ec = 0;
+                    coldest->effective_ec = 0;
 
                     // move data in the hottest block to a free unit
                     list_rm(hottest);
@@ -625,28 +731,117 @@ void do_ftl_run(struct ftl *ftl, struct getaddr *addrs, int count)
                     // erase the coldest block and put it to freelist
                     coldest->erase_counts++;
                     do_put_blk(ftl, coldest);
+                    hottest->in_pool = 1;
+                    coldest->in_pool = 0;
+                    free->in_pool = 1;
 
-                    // reset effective erase count
-//                    hottest->effective_ec = 0;
-//                    coldest->effective_ec = 0;
+                    //update heap
+                    ecmax_delete_element(ftl->hot_ec_max, hottest->ecmax_index);
+                    ecmin_delete_element(ftl->hot_ec_min, hottest->ecmin_index);
+                    eecmin_delete_element(ftl->hot_eec_min, hottest->eecmin_index);
+                    insert_ecminheap(ftl->cold_ec_min, hottest);
+                    insert_eecmaxheap(ftl->cold_eec_max, hottest);
+                    ///***Debug: Start***///
+                    if (ftl->cold_ec_min->arr[hottest->ecmin_index] != hottest) {
+                        printf("DS1 here: %d\n");
+                        exit(-1);
+                    }
+                    if (ftl->cold_eec_max->arr[hottest->eecmax_index] != hottest) {
+                        printf("DS2 here: %d\n");
+                        exit(-1);
+                    }
+                    ///***Debug: End***///
 
+                    ecmin_delete_element(ftl->cold_ec_min, coldest->ecmin_index);
+                    eecmax_delete_element(ftl->cold_eec_max, coldest->eecmax_index);
+                    insert_ecmaxheap(ftl->hot_ec_max, coldest);
+                    insert_ecminheap(ftl->hot_ec_min, coldest);
+                    insert_eecminheap(ftl->hot_eec_min, coldest);
+                    ///***Debug: Start***///
+                    if (ftl->hot_ec_max->arr[coldest->ecmax_index] != coldest) {
+                        printf("DS3 here: %d\n");
+                        exit(-1);
+                    }
+                    if (ftl->hot_ec_min->arr[coldest->ecmin_index] != coldest) {
+                        printf("DS4 here: %d\n");
+                        exit(-1);
+                    }
+                    if (ftl->hot_eec_min->arr[coldest->eecmin_index] != coldest) {
+                        printf("DS5 here: %d\n");
+                        exit(-1);
+                    }
+                    ///***Debug: End***///
                 }
-                
                 // cold pool resize
-//               if (cold_eec_max - hot_eec_min > ftl->wl_threshold) {
-//                   cold_eec->type = 1;
-//               }
+                hottest = NULL;
+                coldest = NULL;
+//                hottest = get_eecmax(ftl->cold_eec_max);
+//                coldest = get_eecmin(ftl->hot_eec_min);
+                hottest = ftl->cold_eec_max->size > 0 ? ftl->cold_eec_max->arr[0] : NULL;
+                coldest = ftl->hot_eec_min->size > 0 ? ftl->hot_eec_min->arr[0] : NULL;
+                if (hottest == NULL || coldest == NULL) {
+//                    printf("CPR Attention: Some pools are empty!\n");
+                }
+                else if ((hottest->effective_ec - coldest->effective_ec) > ftl->wl_threshold) {
+                    ftl->cpr++;
+                    ///***Debug: Start***///
+                    if (ftl->cold_eec_max->arr[hottest->eecmax_index] != hottest) {
+                        printf("HIndex error\n");
+                        exit(-1);
+                    }
+                    if (ftl->hot_eec_min->arr[coldest->eecmin_index] != coldest) {
+                        printf("CIndex error\n");
+                        exit(-1);
+                    }
+                    ///***Debug: End***///
+//                    printf("In CPR: EEC[H+(cold)]=%d, EEC[H-(hot)]=%d\n", hottest->effective_ec, coldest->effective_ec);
+                    hottest->type = 1;
+                    //update heap
+                    ecmin_delete_element(ftl->cold_ec_min, hottest->ecmin_index);
+                    eecmax_delete_element(ftl->cold_eec_max, hottest->eecmax_index);
+                    insert_ecmaxheap(ftl->hot_ec_max, hottest);
+                    insert_ecminheap(ftl->hot_ec_min, hottest);
+                    insert_eecminheap(ftl->hot_eec_min, hottest);
+                    ///***Debug: Start***///
+                    if (ftl->hot_ec_max->arr[hottest->ecmax_index] != hottest) {
+                            printf("CPR1 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->hot_ec_min->arr[hottest->ecmin_index] != hottest) {
+                            printf("CPR2 here: %d\n");
+                            exit(-1);
+                    }
+                    if (ftl->hot_eec_min->arr[hottest->eecmin_index] != hottest) {
+                            printf("CPR3 here: %d\n");
+                            exit(-1);
+                    }
+                    ///***Debug: End***///
+                }
+                // hot pool resize
+                hottest = NULL;
+                coldest = NULL;
+//                hottest = get_ecmax(ftl->hot_ec_max);
+//                coldest = get_ecmin(ftl->hot_ec_min);
+                hottest = ftl->hot_ec_max->size > 0 ? ftl->hot_ec_max->arr[0] : NULL;
+                coldest = ftl->hot_ec_min->size > 0 ? ftl->hot_ec_min->arr[0] : NULL;
+                if (hottest == NULL || coldest == NULL) {
+//                    printf("HPR Attention: Some pools are empty!\n");
+                }
+                else if ((hottest->erase_counts - coldest->erase_counts) > 2 * ftl->wl_threshold) {
+                    ftl->hpr++;
+//                    printf("In HPR\n");
+                    coldest->type = 0;
+                    //update heap
+                    ecmax_delete_element(ftl->hot_ec_max, coldest->ecmax_index);
+                    ecmin_delete_element(ftl->hot_ec_min, coldest->ecmin_index);
+                    eecmin_delete_element(ftl->hot_eec_min, coldest->eecmin_index);
+                    insert_ecminheap(ftl->cold_ec_min, coldest);
+                    insert_eecmaxheap(ftl->cold_eec_max, coldest);
+                }
 
-//              //  hot pool resize
-//               if (max - hot_min > 2 * ftl->wl_threshold) {
-//                   hmin->type = 0;
-//               }
-            } else { // LRU
-//                ftl->int_writes += ftl->Np;
             }
         }
         /***WL***/
-//        printf("count = %d\n", i);
     }
 }
 
@@ -1012,3 +1207,769 @@ static struct pool *python_select_no_arg(struct ftl *ftl)
 }
 
 clean_selector_t clean_select_python = python_select_no_arg;
+
+/***general methods***/
+int parent(int i) {
+    // Get the index of the parent
+    return (i - 1) / 2;
+}
+
+int left_child(int i) {
+    return (2*i + 1);
+}
+
+int right_child(int i) {
+    return (2*i + 2);
+}
+/***general methods***/
+
+
+/***EC min heap***/
+//typedef struct ECMinHeap ECMinHeap;
+//struct ECMinHeap {
+//    struct segment **arr;
+//    // Current Size of the Heap
+//    int size;
+//    // Maximum capacity of the heap
+//    int capacity;
+//};
+
+struct segment *get_ecmin(ECMinHeap* heap) {
+    // Return the root node element,
+    // since that's the minimum
+//    return heap->arr[0];
+    struct segment *min = NULL;
+    for (int i = 0; i <= 6; i++){
+        if (i > heap->size - 1) {
+            return min == NULL ? NULL : min;
+        }
+        if ((heap->arr[i]->in_pool == 1 && min == NULL) || (heap->arr[i]->in_pool == 1 && heap->arr[i]->erase_counts < min->erase_counts)) {
+            min = heap->arr[i];
+        }
+        if (i == 0 || i == 2 || i == 6) {
+            if (min != NULL) return min;
+        }
+    }
+    return NULL;
+}
+
+ECMinHeap* init_ecminheap(int capacity) {
+    ECMinHeap* minheap = (ECMinHeap*) calloc (1, sizeof(ECMinHeap));
+    minheap->arr = (struct segment**) calloc (capacity, sizeof(struct segment*));
+    minheap->capacity = capacity;
+    minheap->size = 0;
+    return minheap;
+}
+
+ECMinHeap* insert_ecminheap(ECMinHeap* heap, struct segment* element) {
+    // Inserts an element to the min heap
+    // We first add it to the bottom (last level)
+    // of the tree, and keep swapping with it's parent
+    // if it is lesser than it. We keep doing that until
+    // we reach the root node. So, we will have inserted the
+    // element in it's proper position to preserve the min heap property
+    if (heap->size == heap->capacity) {
+        fprintf(stderr, "ECMinHeap: Cannot insert. Heap is already full!\n");
+        return heap;
+    }
+    // We can add it. Increase the size and add it to the end
+    heap->size++;
+    heap->arr[heap->size - 1] = element;
+    element->ecmin_index = heap->size - 1;
+
+    // Keep swapping until we reach the root
+    int curr = heap->size - 1;
+    // As long as you aren't in the root node, and while the
+    // parent of the last element is greater than it
+    while (curr > 0 && heap->arr[parent(curr)]->erase_counts > heap->arr[curr]->erase_counts) {
+        // Swap
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->ecmin_index;
+        heap->arr[parent(curr)]->ecmin_index = heap->arr[curr]->ecmin_index;
+        heap->arr[curr]->ecmin_index = tmp;
+        // Update the current index of element
+        curr = parent(curr);
+    }
+    return heap;
+}
+
+ECMinHeap* ecminheapify(ECMinHeap* heap, int index) {
+    // Rearranges the heap as to maintain
+    // the min-heap property
+    if (heap->size <= 1)
+        return heap;
+
+    int left = left_child(index);
+    int right = right_child(index);
+
+    // Variable to get the smallest element of the subtree
+    // of an element an index
+    int smallest = index;
+
+    // If the left child is smaller than this element, it is
+    // the smallest
+    if (left < heap->size && heap->arr[left]->erase_counts < heap->arr[index]->erase_counts)
+        smallest = left;
+
+    // Similarly for the right, but we are updating the smallest element
+    // so that it will definitely give the least element of the subtree
+    if (right < heap->size && heap->arr[right]->erase_counts < heap->arr[smallest]->erase_counts)
+        smallest = right;
+
+    // Now if the current element is not the smallest,
+    // swap with the current element. The min heap property
+    // is now satisfied for this subtree. We now need to
+    // recursively keep doing this until we reach the root node,
+    // the point at which there will be no change!
+    if (smallest != index)
+    {
+        struct segment* temp = heap->arr[index];
+        heap->arr[index] = heap->arr[smallest];
+        heap->arr[smallest] = temp;
+        //swap index
+        int tmp = heap->arr[index]->ecmin_index;
+        heap->arr[index]->ecmin_index = heap->arr[smallest]->ecmin_index;
+        heap->arr[smallest]->ecmin_index = tmp;
+
+        heap = ecminheapify(heap, smallest);
+    }
+
+    return heap;
+}
+
+ECMinHeap* delete_ecminimum(ECMinHeap* heap) {
+    // Deletes the minimum element, at the root
+    if (!heap || heap->size == 0)
+        return heap;
+
+    int size = heap->size;
+    struct segment* last_element = heap->arr[size-1];
+
+    // Update root value with the last element
+    heap->arr[0] = last_element;
+    last_element->ecmin_index = 0;
+
+    // Now remove the last element, by decreasing the size
+    heap->size--;
+    size--;
+
+    // We need to call heapify(), to maintain the min-heap
+    // property
+    heap = ecminheapify(heap, 0);
+    return heap;
+}
+
+ECMinHeap* ecmin_delete_element(ECMinHeap* heap, int index) {
+    // Deletes an element, indexed by index
+    // Ensure that it's lesser than the current root
+    int cur_erase_counts = heap->arr[index]->erase_counts;
+    heap->arr[index]->erase_counts = -1;
+
+    // Now keep swapping, until we update the tree
+    int curr = index;
+    while (curr > 0 && heap->arr[parent(curr)]->erase_counts > heap->arr[curr]->erase_counts) {
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->ecmin_index;
+        heap->arr[parent(curr)]->ecmin_index = heap->arr[curr]->ecmin_index;
+        heap->arr[curr]->ecmin_index = tmp;
+
+        curr = parent(curr);
+    }
+
+    heap->arr[0]->erase_counts = cur_erase_counts;
+    // Now simply delete the minimum element
+    heap = delete_ecminimum(heap);
+    return heap;
+}
+
+ECMinHeap* ecmin_addone_check(ECMinHeap* heap, int index) {
+    return ecminheapify(heap, index);
+}
+
+void print_ecminheap(ECMinHeap* heap) {
+    // Simply print the array. This is an
+    // inorder traversal of the tree
+    printf("ECMin Heap:\n");
+    for (int i=0; i<heap->size; i++) {
+        printf("%d,%d -> ", heap->arr[i]->erase_counts, heap->arr[i]->ecmin_index);
+    }
+    printf("\n");
+}
+void free_ecminheap(ECMinHeap* heap) {
+    if (!heap)
+        return;
+    free(heap->arr);
+    free(heap);
+}
+/***EC min heap***/
+
+/***EC max heap***/
+//typedef struct ECMaxHeap ECMaxHeap;
+//struct ECMaxHeap {
+//    struct segment **arr;
+//    // Current Size of the Heap
+//    int size;
+//    // Maximum capacity of the heap
+//    int capacity;
+//};
+
+struct segment *get_ecmax(ECMaxHeap* heap) {
+    struct segment *max = NULL;
+    for (int i = 0; i <= 6; i++){
+        if (i > heap->size - 1) {
+            return max == NULL ? NULL : max;
+        }
+        if ((heap->arr[i]->in_pool == 1 && max == NULL) || (heap->arr[i]->in_pool == 1 && heap->arr[i]->erase_counts > max->erase_counts)) {
+            max = heap->arr[i];
+        }
+        if (i == 0 || i == 2 || i == 6) {
+            if (max != NULL) return max;
+        }
+    }
+    return NULL;
+}
+
+ECMaxHeap* init_ecmaxheap(int capacity) {
+    ECMaxHeap* maxheap = (ECMaxHeap*) calloc (1, sizeof(ECMaxHeap));
+    maxheap->arr = (struct segment**) calloc (capacity, sizeof(struct segment*));
+    maxheap->capacity = capacity;
+    maxheap->size = 0;
+    return maxheap;
+}
+
+ECMaxHeap* insert_ecmaxheap(ECMaxHeap* heap, struct segment* element) {
+    // Inserts an element to the max heap
+    // We first add it to the bottom (last level)
+    // of the tree, and keep swapping with it's parent
+    // if it is larger than it. We keep doing that until
+    // we reach the root node. So, we will have inserted the
+    // element in it's proper position to preserve the max heap property
+    if (heap->size == heap->capacity) {
+        fprintf(stderr, "ECMaxHeap: Cannot insert. Heap is already full!\n");
+        return heap;
+    }
+    // We can add it. Increase the size and add it to the end
+    heap->size++;
+    heap->arr[heap->size - 1] = element;
+    element->ecmax_index = heap->size - 1;
+
+    // Keep swapping until we reach the root
+    int curr = heap->size - 1;
+    // As long as you aren't in the root node, and while the
+    // parent of the last element is greater than it
+    while (curr > 0 && heap->arr[parent(curr)]->erase_counts < heap->arr[curr]->erase_counts) {
+        // Swap
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->ecmax_index;
+        heap->arr[parent(curr)]->ecmax_index = heap->arr[curr]->ecmax_index;
+        heap->arr[curr]->ecmax_index = tmp;
+        // Update the current index of element
+        curr = parent(curr);
+    }
+    return heap;
+}
+
+ECMaxHeap* ecmaxheapify(ECMaxHeap* heap, int index) {
+    // Rearranges the heap as to maintain
+    // the max-heap property
+    if (heap->size <= 1)
+        return heap;
+
+    int left = left_child(index);
+    int right = right_child(index);
+
+    // get the largest node
+    int largest = index;
+
+    if (left < heap->size && heap->arr[left]->erase_counts > heap->arr[index]->erase_counts)
+        largest = left;
+
+    if (right < heap->size && heap->arr[right]->erase_counts > heap->arr[largest]->erase_counts)
+        largest = right;
+
+    // Now if the current element is not the largest,
+    // swap with the current element. The max heap property
+    // is now satisfied for this subtree. We now need to
+    // recursively keep doing this until we reach the root node,
+    // the point at which there will be no change!
+    if (largest != index)
+    {
+        struct segment* temp = heap->arr[index];
+        heap->arr[index] = heap->arr[largest];
+        heap->arr[largest] = temp;
+        //swap index
+        int tmp = heap->arr[index]->ecmax_index;
+        heap->arr[index]->ecmax_index = heap->arr[largest]->ecmax_index;
+        heap->arr[largest]->ecmax_index = tmp;
+
+        heap = ecmaxheapify(heap, largest);
+    }
+
+    return heap;
+}
+
+ECMaxHeap* delete_ecmaximum(ECMaxHeap* heap) {
+    // Deletes the maximum element, at the root
+    if (!heap || heap->size == 0)
+        return heap;
+
+    int size = heap->size;
+    struct segment* last_element = heap->arr[size-1];
+
+    // Update root value with the last element
+    heap->arr[0] = last_element;
+    last_element->ecmax_index = 0;
+
+    // Now remove the last element, by decreasing the size
+    heap->size--;
+    size--;
+
+    // We need to call heapify(), to maintain the max-heap
+    // property
+    heap = ecmaxheapify(heap, 0);
+    return heap;
+}
+
+ECMaxHeap* ecmax_delete_element(ECMaxHeap* heap, int index) {
+    // Deletes an element, indexed by index
+    // Ensure that it's larger than the current root
+    int cur_erase_counts = heap->arr[index]->erase_counts;
+    heap->arr[index]->erase_counts = INT_MAX;
+
+    // Now keep swapping, until we update the tree
+    int curr = index;
+    while (curr > 0 && heap->arr[parent(curr)]->erase_counts < heap->arr[curr]->erase_counts) {
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->ecmax_index;
+        heap->arr[parent(curr)]->ecmax_index = heap->arr[curr]->ecmax_index;
+        heap->arr[curr]->ecmax_index = tmp;
+
+        curr = parent(curr);
+    }
+
+    heap->arr[0]->erase_counts = cur_erase_counts;
+    // Now simply delete the minimum element
+    heap = delete_ecmaximum(heap);
+    return heap;
+}
+
+ECMaxHeap* ecmax_addone_check(ECMaxHeap* heap, int index) {
+    int curr = index;
+    while (curr > 0 && heap->arr[parent(curr)]->erase_counts < heap->arr[curr]->erase_counts) {
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->ecmax_index;
+        heap->arr[parent(curr)]->ecmax_index = heap->arr[curr]->ecmax_index;
+        heap->arr[curr]->ecmax_index = tmp;
+
+        curr = parent(curr);
+    }
+    return heap;
+}
+
+void print_ecmaxheap(ECMaxHeap* heap) {
+    // Simply print the array. This is an
+    // inorder traversal of the tree
+    printf("ECMax Heap:\n");
+    for (int i=0; i<heap->size; i++) {
+        printf("%d,%d-> ", heap->arr[i]->erase_counts, heap->arr[i]->ecmax_index);
+    }
+    printf("\n");
+}
+
+void free_ecmaxheap(ECMaxHeap* heap) {
+    if (!heap)
+        return;
+    free(heap->arr);
+    free(heap);
+}
+/***EC max heap***/
+
+/***EEC min heap***/
+//typedef struct EECMinHeap EECMinHeap;
+//struct EECMinHeap {
+//    struct segment **arr;
+//    // Current Size of the Heap
+//    int size;
+//    // Maximum capacity of the heap
+//    int capacity;
+//};
+
+struct segment *get_eecmin(EECMinHeap* heap) {
+    // Return the root node element,
+    // since that's the minimum
+//    return heap->arr[0];
+    struct segment *min = NULL;
+    for (int i = 0; i <= 6; i++){
+        if (i > heap->size - 1) {
+            return min == NULL ? NULL : min;
+        }
+        if ((heap->arr[i]->in_pool == 1 && min == NULL) || (heap->arr[i]->in_pool == 1 && heap->arr[i]->effective_ec < min->effective_ec)) {
+            min = heap->arr[i];
+        }
+        if (i == 0 || i == 2 || i == 6) {
+            if (min != NULL) return min;
+        }
+    }
+    return NULL;
+}
+
+EECMinHeap* init_eecminheap(int capacity) {
+    EECMinHeap* minheap = (EECMinHeap*) calloc (1, sizeof(EECMinHeap));
+    minheap->arr = (struct segment**) calloc (capacity, sizeof(struct segment*));
+    minheap->capacity = capacity;
+    minheap->size = 0;
+    return minheap;
+}
+
+EECMinHeap* insert_eecminheap(EECMinHeap* heap, struct segment* element) {
+    // Inserts an element to the min heap
+    // We first add it to the bottom (last level)
+    // of the tree, and keep swapping with it's parent
+    // if it is lesser than it. We keep doing that until
+    // we reach the root node. So, we will have inserted the
+    // element in it's proper position to preserve the min heap property
+    if (heap->size == heap->capacity) {
+        fprintf(stderr, "EECMinHeap: Cannot insert. Heap is already full!\n");
+        return heap;
+    }
+    // We can add it. Increase the size and add it to the end
+    heap->size++;
+    heap->arr[heap->size - 1] = element;
+    element->eecmin_index = heap->size - 1;
+
+    // Keep swapping until we reach the root
+    int curr = heap->size - 1;
+    // As long as you aren't in the root node, and while the
+    // parent of the last element is greater than it
+    while (curr > 0 && heap->arr[parent(curr)]->effective_ec > heap->arr[curr]->effective_ec) {
+        // Swap
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->eecmin_index;
+        heap->arr[parent(curr)]->eecmin_index = heap->arr[curr]->eecmin_index;
+        heap->arr[curr]->eecmin_index = tmp;
+        // Update the current index of element
+        curr = parent(curr);
+    }
+    return heap;
+}
+
+EECMinHeap* eecminheapify(EECMinHeap* heap, int index) {
+    // Rearranges the heap as to maintain
+    // the min-heap property
+    if (heap->size <= 1)
+        return heap;
+
+    int left = left_child(index);
+    int right = right_child(index);
+
+    // Variable to get the smallest element of the subtree
+    // of an element an index
+    int smallest = index;
+
+    // If the left child is smaller than this element, it is
+    // the smallest
+    if (left < heap->size && heap->arr[left]->effective_ec < heap->arr[index]->effective_ec)
+        smallest = left;
+
+    // Similarly for the right, but we are updating the smallest element
+    // so that it will definitely give the least element of the subtree
+    if (right < heap->size && heap->arr[right]->effective_ec < heap->arr[smallest]->effective_ec)
+        smallest = right;
+
+    // Now if the current element is not the smallest,
+    // swap with the current element. The min heap property
+    // is now satisfied for this subtree. We now need to
+    // recursively keep doing this until we reach the root node,
+    // the point at which there will be no change!
+    if (smallest != index)
+    {
+        struct segment* temp = heap->arr[index];
+        heap->arr[index] = heap->arr[smallest];
+        heap->arr[smallest] = temp;
+        //swap index
+        int tmp = heap->arr[index]->eecmin_index;
+        heap->arr[index]->eecmin_index = heap->arr[smallest]->eecmin_index;
+        heap->arr[smallest]->eecmin_index = tmp;
+
+        heap = eecminheapify(heap, smallest);
+    }
+
+    return heap;
+}
+
+EECMinHeap* delete_eecminimum(EECMinHeap* heap) {
+    // Deletes the minimum element, at the root
+    if (!heap || heap->size == 0)
+        return heap;
+
+    int size = heap->size;
+    struct segment* last_element = heap->arr[size-1];
+
+    // Update root value with the last element
+    heap->arr[0] = last_element;
+    last_element->eecmin_index = 0;
+
+    // Now remove the last element, by decreasing the size
+    heap->size--;
+    size--;
+
+    // We need to call heapify(), to maintain the min-heap
+    // property
+    heap = eecminheapify(heap, 0);
+    return heap;
+}
+
+EECMinHeap* eecmin_delete_element(EECMinHeap* heap, int index) {
+    // Deletes an element, indexed by index
+    // Ensure that it's lesser than the current root
+    int cur_erase_counts = heap->arr[index]->effective_ec;
+    heap->arr[index]->effective_ec = -1;
+
+    // Now keep swapping, until we update the tree
+    int curr = index;
+    while (curr > 0 && heap->arr[parent(curr)]->effective_ec > heap->arr[curr]->effective_ec) {
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->eecmin_index;
+        heap->arr[parent(curr)]->eecmin_index = heap->arr[curr]->eecmin_index;
+        heap->arr[curr]->eecmin_index = tmp;
+
+        curr = parent(curr);
+    }
+
+    heap->arr[0]->effective_ec = cur_erase_counts;
+    // Now simply delete the minimum element
+    heap = delete_eecminimum(heap);
+    return heap;
+}
+
+EECMinHeap* eecmin_addone_check(EECMinHeap* heap, int index) {
+    return eecminheapify(heap, index);
+}
+
+void print_eecminheap(EECMinHeap* heap) {
+    // Simply print the array. This is an
+    // inorder traversal of the tree
+    printf("EECMin Heap:\n");
+    for (int i=0; i<heap->size; i++) {
+        printf("%d,%d -> ", heap->arr[i]->effective_ec, heap->arr[i]->eecmin_index);
+    }
+    printf("\n");
+}
+void free_eecminheap(EECMinHeap* heap) {
+    if (!heap)
+        return;
+    free(heap->arr);
+    free(heap);
+}
+/***EC min heap***/
+
+/***EEC max heap***/
+//typedef struct EECMaxHeap EECMaxHeap;
+//struct EECMaxHeap {
+//    struct segment **arr;
+//    // Current Size of the Heap
+//    int size;
+//    // Maximum capacity of the heap
+//    int capacity;
+//};
+
+struct segment *get_eecmax(EECMaxHeap* heap) {
+    struct segment *max = NULL;
+    for (int i = 0; i <= 6; i++){
+        if (i > heap->size - 1) {
+            return max == NULL ? NULL : max;
+        }
+        if ((heap->arr[i]->in_pool == 1 && max == NULL) || (heap->arr[i]->in_pool == 1 && heap->arr[i]->effective_ec > max->effective_ec)) {
+            max = heap->arr[i];
+        }
+        if (i == 0 || i == 2 || i == 6) {
+            if (max != NULL) return max;
+        }
+    }
+    return NULL;
+}
+
+EECMaxHeap* init_eecmaxheap(int capacity) {
+    EECMaxHeap* maxheap = (EECMaxHeap*) calloc (1, sizeof(EECMaxHeap));
+    maxheap->arr = (struct segment**) calloc (capacity, sizeof(struct segment*));
+    maxheap->capacity = capacity;
+    maxheap->size = 0;
+    return maxheap;
+}
+
+EECMaxHeap* insert_eecmaxheap(EECMaxHeap* heap, struct segment* element) {
+    // Inserts an element to the max heap
+    // We first add it to the bottom (last level)
+    // of the tree, and keep swapping with it's parent
+    // if it is larger than it. We keep doing that until
+    // we reach the root node. So, we will have inserted the
+    // element in it's proper position to preserve the max heap property
+    if (heap->size == heap->capacity) {
+        fprintf(stderr, "EECMaxHeap: Cannot insert. Heap is already full!\n");
+        return heap;
+    }
+    // We can add it. Increase the size and add it to the end
+    heap->size++;
+    heap->arr[heap->size - 1] = element;
+    element->eecmax_index = heap->size - 1;
+
+    // Keep swapping until we reach the root
+    int curr = heap->size - 1;
+    // As long as you aren't in the root node, and while the
+    // parent of the last element is greater than it
+    while (curr > 0 && heap->arr[parent(curr)]->effective_ec < heap->arr[curr]->effective_ec) {
+        // Swap
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->eecmax_index;
+        heap->arr[parent(curr)]->eecmax_index = heap->arr[curr]->eecmax_index;
+        heap->arr[curr]->eecmax_index = tmp;
+        // Update the current index of element
+        curr = parent(curr);
+    }
+    return heap;
+}
+
+EECMaxHeap* eecmaxheapify(EECMaxHeap* heap, int index) {
+    // Rearranges the heap as to maintain
+    // the max-heap property
+    if (heap->size <= 1)
+        return heap;
+
+    int left = left_child(index);
+    int right = right_child(index);
+
+    // get the largest node
+    int largest = index;
+
+    if (left < heap->size && heap->arr[left]->effective_ec > heap->arr[index]->effective_ec)
+        largest = left;
+
+    if (right < heap->size && heap->arr[right]->effective_ec > heap->arr[largest]->effective_ec)
+        largest = right;
+
+    // Now if the current element is not the largest,
+    // swap with the current element. The max heap property
+    // is now satisfied for this subtree. We now need to
+    // recursively keep doing this until we reach the root node,
+    // the point at which there will be no change!
+    if (largest != index)
+    {
+        struct segment* temp = heap->arr[index];
+        heap->arr[index] = heap->arr[largest];
+        heap->arr[largest] = temp;
+        //swap index
+        int tmp = heap->arr[index]->eecmax_index;
+        heap->arr[index]->eecmax_index = heap->arr[largest]->eecmax_index;
+        heap->arr[largest]->eecmax_index = tmp;
+
+        heap = eecmaxheapify(heap, largest);
+    }
+
+    return heap;
+}
+
+EECMaxHeap* delete_eecmaximum(EECMaxHeap* heap) {
+    // Deletes the maximum element, at the root
+    if (!heap || heap->size == 0)
+        return heap;
+
+    int size = heap->size;
+    struct segment* last_element = heap->arr[size-1];
+
+    // Update root value with the last element
+    heap->arr[0] = last_element;
+    last_element->eecmax_index = 0;
+
+    // Now remove the last element, by decreasing the size
+    heap->size--;
+    size--;
+
+    // We need to call heapify(), to maintain the max-heap
+    // property
+    heap = eecmaxheapify(heap, 0);
+    return heap;
+}
+
+EECMaxHeap* eecmax_delete_element(EECMaxHeap* heap, int index) {
+    // Deletes an element, indexed by index
+    // Ensure that it's larger than the current root
+    int cur_erase_counts = heap->arr[index]->effective_ec;
+    heap->arr[index]->effective_ec = 99999;
+
+    // Now keep swapping, until we update the tree
+    int curr = index;
+    while (curr > 0 && heap->arr[parent(curr)]->effective_ec < heap->arr[curr]->effective_ec) {
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->eecmax_index;
+        heap->arr[parent(curr)]->eecmax_index = heap->arr[curr]->eecmax_index;
+        heap->arr[curr]->eecmax_index = tmp;
+
+        curr = parent(curr);
+    }
+
+    heap->arr[0]->effective_ec = cur_erase_counts;
+    // Now simply delete the minimum element
+    heap = delete_eecmaximum(heap);
+    return heap;
+}
+
+EECMaxHeap* eecmax_addone_check(EECMaxHeap* heap, int index) {
+    int curr = index;
+    while (curr > 0 && heap->arr[parent(curr)]->effective_ec < heap->arr[curr]->effective_ec) {
+        struct segment* temp = heap->arr[parent(curr)];
+        heap->arr[parent(curr)] = heap->arr[curr];
+        heap->arr[curr] = temp;
+        //swap index
+        int tmp = heap->arr[parent(curr)]->eecmax_index;
+        heap->arr[parent(curr)]->eecmax_index = heap->arr[curr]->eecmax_index;
+        heap->arr[curr]->eecmax_index = tmp;
+
+        curr = parent(curr);
+    }
+    return heap;
+}
+
+void print_eecmaxheap(EECMaxHeap* heap) {
+    // Simply print the array. This is an
+    // inorder traversal of the tree
+    printf("EECMax Heap:\n");
+    for (int i=0; i<heap->size; i++) {
+        printf("%d,%d-> ", heap->arr[i]->effective_ec, heap->arr[i]->eecmax_index);
+    }
+    printf("\n");
+}
+
+void free_eecmaxheap(EECMaxHeap* heap) {
+    if (!heap)
+        return;
+    free(heap->arr);
+    free(heap);
+}
+/***EEC max heap***/

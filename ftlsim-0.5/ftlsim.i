@@ -78,6 +78,8 @@ struct ftl {
     int rr_threshold;
     int rr_writes;
     int ext_reads;
+    int hpr;
+    int cpr;
 };
 
 %extend ftl {
@@ -121,6 +123,10 @@ struct ftl {
     void write(int addrs) {
         err_occurred = 0;
         do_ftl_write(self, addrs);
+    }
+    void build_heap(void) {
+        err_occurred = 0;
+        do_ftl_build_heap(self);
     }
     ~ftl() {
         err_occurred = 0;
