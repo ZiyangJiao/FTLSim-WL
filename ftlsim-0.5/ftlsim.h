@@ -91,6 +91,7 @@ struct ftl {
     unsigned long long int erase_counts;
     int wl_counts;
     int wl_threshold;
+    int wl_threshold_ap;
     int wl_activated;
     int wl_writes;
 //    struct segment *hottest;

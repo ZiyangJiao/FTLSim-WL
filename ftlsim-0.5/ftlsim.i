@@ -72,6 +72,7 @@ struct ftl {
     PyObject *get_pool_to_clean_arg;
     int wl_counts;
     int wl_threshold;
+    int wl_threshold_ap;
     int wl_activated;
     int wl_writes;
     int rr_counts;
