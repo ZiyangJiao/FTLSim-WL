@@ -18,9 +18,9 @@ A simulation consists of traffic generation, FTL simulation, and statistics coll
   ```
 ## Installation
   ```
-  CFLAGS=-O3 python setup.py build
+  CFLAGS=-O3 python2 setup.py build
      and then either:
-  python setup.py install
+  python2 setup.py install
      or
   mv build/lib*/* 
   ```  
