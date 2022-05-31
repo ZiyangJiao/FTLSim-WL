@@ -1,5 +1,5 @@
-# FTLSim 2.0
-FTLSim2.0 - FTLSim extension with a serious of wear leveling, garbage collection, block allocation policies.
+# FTLSim-WL
+FTLSim extension with a serious of wear leveling, garbage collection, block allocation policies.
 
 The orginal FTLSim is the simulator used in "Analytic Modeling of SSD Write Performance, Peter Desnoyers".
 
