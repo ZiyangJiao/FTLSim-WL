@@ -20,7 +20,7 @@ A simulation consists of traffic generation, FTL simulation, and statistics coll
   ```
 ## Installation
   ```
-  cp *target_ftl_congiguration_file.c* ftlsim.c
+  cp **target_ftl_congiguration_file.c** ftlsim.c
   CFLAGS=-O3 python2 setup.py build
      and then either:
   python2 setup.py install
