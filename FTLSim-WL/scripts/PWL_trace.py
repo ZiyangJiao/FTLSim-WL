@@ -151,6 +151,3 @@ for wl_threshold in [5]: # will not be used for PWL WL
                     file.write("\n")
                     file.close()
                                                                                
-                    if runs == 0:
-                    	exit()           
-                            
