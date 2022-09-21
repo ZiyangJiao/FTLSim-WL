@@ -104,7 +104,7 @@ for wl_threshold in [5]: # will not be used for PWL WL
                 ftl.ext_writes = 0
                 ftl.wl_activated = 1
                 ftl.wl_ds = 1
-                ftl.TBW = 0 # total bytes written in terms of full drive writes
+                ftl.TBW = 0 
                 ftl.build_heap()
 
 
